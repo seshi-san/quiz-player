@@ -1,0 +1,17 @@
+{
+ "id": "sample",
+ "title": "サンプル（3問）",
+ "items": [
+  {
+   "type": "learn",
+   "title": "例：つなぎの言葉",
+   "words": [
+    {"word": "besides", "pos": "前/副", "meaning": "〜に加えて／そのうえ", "core": "beside(そばに)にsが付くと『加えて』", "example": "Besides English, she speaks French.", "example_ja": "英語に加えて、彼女はフランス語も話す。"},
+    {"word": "meanwhile", "pos": "副", "meaning": "その間に／一方で", "core": "mean(中間)+while(時間)", "example": "The office is closed. Meanwhile, staff will work from home.", "example_ja": "オフィスは閉まっている。その間、スタッフは在宅勤務する。"}
+   ]
+  },
+  {"word": "besides", "sentence": "___ a salary, employees receive free meals.", "options": ["Besides", "Meanwhile", "Unlike", "Via"], "answer": "Besides", "ja": "給料に加えて、社員は無料の食事が受けられる。", "note": "besides＝〜に加えて"},
+  {"word": "meanwhile", "sentence": "The road is closed. ___, please use the side entrance.", "options": ["Meanwhile", "Unlike", "Via", "Mostly"], "answer": "Meanwhile", "ja": "道路は閉鎖中です。その間は横の入口をご利用ください。", "note": "meanwhile＝その間(に)"},
+  {"word": "efficient", "sentence": "We need a more ___ way to process orders.", "options": ["efficient", "efficiently", "efficiency", "effect"], "answer": "efficient", "ja": "注文を処理するもっと効率的な方法が必要だ。", "note": "名詞(way)の前は形容詞"}
+ ]
+}

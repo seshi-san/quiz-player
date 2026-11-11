@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Quiz Player</title>
+<style>
+:root{--bg:#f6f5f2;--fg:#1d1d1f;--muted:#6e6e73;--card:#fff;--line:#e3e1dc;--ok:#2f7d4f;--okbg:#e6f3ea;--ng:#c2452d;--ngbg:#fbe9e5;--blank:#8a6d1f;--accent:#3557c5;--hover:#eef1fb}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#141416;--fg:#ececef;--muted:#9a9aa2;--card:#1f1f23;--line:#2e2e34;--ok:#4fb37a;--okbg:#1d3326;--ng:#e2694f;--ngbg:#3a221d;--blank:#d1a73b;--accent:#7f9cf5;--hover:#262b3d}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,"Hiragino Sans","Segoe UI","Yu Gothic UI",sans-serif;padding-bottom:env(safe-area-inset-bottom)}
+header{max-width:820px;margin:0 auto;padding:12px 16px 0;display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap}
+h1{font-size:16px;margin:0 auto 0 0;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+h2{margin:0 0 10px;font-size:18px}
+.stat{font-size:13px;color:var(--muted)} .stat b{color:var(--fg);font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px;cursor:pointer;min-height:40px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.danger{color:var(--ng)}
+button[disabled]{opacity:.45;cursor:default}
+main{max-width:820px;margin:0 auto;padding:12px 16px 24px}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-bottom:12px}.bar>div{height:100%;background:var(--accent)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:12px}
+.qno{font-size:13px;color:var(--muted);margin-bottom:8px}
+.sentence{font-size:21px;line-height:1.6;margin-bottom:16px;overflow-wrap:anywhere}
+.opts{display:grid;gap:8px}
+.opt{display:flex;gap:12px;align-items:center;text-align:left;padding:12px 14px;font-size:18px;min-height:52px;overflow-wrap:anywhere}
+.opt .k{font-weight:600;color:var(--muted);width:1.4em;flex:none}
+.opt.correct{border-color:var(--ok);background:var(--okbg)}
+.opt.wrong{border-color:var(--ng);background:var(--ngbg)}
+@media (hover:hover){.opt:hover:not([disabled]){background:var(--hover)}tr.go:hover{background:var(--hover)}}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+.fb{margin-top:14px;padding:12px 14px;border-radius:10px;border:1px solid var(--line);line-height:1.7}
+.fb .v{font-weight:600}.fb .v.ok{color:var(--ok)}.fb .v.ng{color:var(--ng)}.fb .v.bl{color:var(--blank)}
+.fb .ja{margin-top:4px}.fb .note{color:var(--muted);font-size:14px}
+label.slip{display:inline-flex;gap:8px;align-items:center;font-size:15px;margin-top:8px;cursor:pointer;min-height:36px}
+label.slip input{width:20px;height:20px}
+textarea{width:100%;min-height:56px;margin-top:12px;font:inherit;font-size:16px;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px}
+textarea.big{min-height:160px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.keys{font-size:12px;color:var(--muted);margin-top:12px}
+@media (hover:none){.keys{display:none}}
+.nav{display:flex;justify-content:space-between;gap:8px;margin-top:14px}
+.nav button{flex:1}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+tr.go{cursor:pointer}
+.r-ok{color:var(--ok)}.r-ng{color:var(--ng)}.r-bl{color:var(--blank)}.r-un{color:var(--muted)}
+.lw{border-top:1px solid var(--line);padding:10px 0}
+.lw .w{font-size:19px;font-weight:600}
+.sub{color:var(--muted);font-size:14px}
+.err{color:var(--ng);font-size:14px;white-space:pre-wrap}
+.qrow{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding:10px 0}
+.qrow .grow{flex:1;min-width:0}
+.toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;display:none;max-width:90vw;z-index:9}
+@media (max-width:520px){.sentence{font-size:18px}.opt{font-size:16px}.card{padding:14px}}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Quiz Player</h1>
+  <span class="stat" id="statline" style="display:none">正解 <b id="sOk">0</b>・不正解 <b id="sNg">0</b>・空欄 <b id="sBl">0</b>・残り <b id="sLeft">0</b></span>
+  <button id="toList" style="display:none">一覧・結果</button>
+  <button id="toHome">問題集</button>
+  <button id="toHelp">使い方</button>
+</header>
+<main id="main"></main>
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+/* ===== 保存 ===== */
+var P = "qp:";
+function load(k, d){ try { var v = localStorage.getItem(P + k); return v === null ? d : JSON.parse(v); } catch(e){ return d; } }
+function store(k, v){ try { localStorage.setItem(P + k, JSON.stringify(v)); return true; } catch(e){ toast("端末に保存できませんでした（容量不足かプライベートブラウズ）"); return false; } }
+function drop(k){ try { localStorage.removeItem(P + k); } catch(e){} }
+
+var L = ["A","B","C","D","E","F"];
+var $ = function(id){ return document.getElementById(id); };
+function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+function toast(m){ var t = $("toast"); t.textContent = m; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(function(){ t.style.display = "none"; }, 2600); }
+
+/* ===== 読み込み ===== */
+function hash(s){ var h = 2166136261; for (var i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function rng(seed){ return function(){ seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function itemKey(it){ return it.type === "learn" ? "L|" + it.title : "Q|" + it.word + "|" + it.sentence; }
+
+function extractJSON(text){
+  text = String(text || "").replace(/^﻿/, "").replace(/```[a-zA-Z]*/g, "");
+  text = text.replace(/[“”]/g, '"');               // スマート引用符の混入対策
+  var a = text.indexOf("{"), b = text.lastIndexOf("}");
+  if (a < 0) throw new Error("JSON（{ 〜 }）が見つかりません");
+  if (b < a) throw new Error("データが途中で切れています（最後の } まで貼れているか確認してください）");
+  try { return JSON.parse(text.slice(a, b + 1)); }
+  catch(e){ throw new Error("JSON として読めません：" + e.message + "\n（途中で切れていないか、最後の } まで貼れているか確認してください）"); }
+}
+
+/* 1問ずつ検査。壊れた問題は飛ばして、理由を返す */
+function normalize(raw){
+  if (!raw || typeof raw !== "object") throw new Error("データの形が違います");
+  var id = String(raw.id || "").trim();
+  if (!id) throw new Error("id がありません（例：\"id\": \"2026-11-12\"）");
+  if (!Array.isArray(raw.items)) throw new Error("items（問題の配列）がありません");
+  var shuffle = raw.shuffle !== false, ok = [], bad = [];
+  raw.items.forEach(function(it, n){
+    var where = (n + 1) + "番目" + (it && it.word ? "（" + it.word + "）" : it && it.title ? "（" + it.title + "）" : "");
+    try {
+      if (!it || typeof it !== "object") throw new Error("中身が空");
+      if (it.type === "learn"){
+        if (!Array.isArray(it.words) || !it.words.length) throw new Error("words がない");
+        ok.push({type:"learn", title:String(it.title || "新しい単語"), words:it.words.map(function(w){
+          return {word:String(w.word || ""), pos:w.pos || "", meaning:w.meaning || "", core:w.core || "", example:w.example || "", example_ja:w.example_ja || ""}; })});
+        return;
+      }
+      if (typeof it.sentence !== "string" || !it.sentence) throw new Error("sentence がない");
+      if (!Array.isArray(it.options) || it.options.length < 2 || it.options.length > 6) throw new Error("options は2〜6個");
+      var opts = it.options.map(String), ans = it.answer;
+      if (typeof ans === "string"){ var k = opts.indexOf(ans); if (k < 0) throw new Error("answer「" + ans + "」が options にない"); ans = k; }
+      if (typeof ans !== "number" || ans % 1 || ans < 0 || ans >= opts.length) throw new Error("answer が範囲外");
+      var q = {word:String(it.word || opts[ans]), sentence:it.sentence, options:opts, answer:ans, ja:it.ja || "", note:it.note || ""};
+      if (shuffle){
+        var r = rng(hash(id + "|" + q.word + "|" + q.sentence)), order = opts.map(function(_, i){ return i; });
+        for (var i = order.length - 1; i > 0; i--){ var j = Math.floor(r() * (i + 1)); var t = order[i]; order[i] = order[j]; order[j] = t; }
+        q.options = order.map(function(i){ return opts[i]; }); q.answer = order.indexOf(ans);
+      }
+      ok.push(q);
+    } catch(e){ bad.push(where + "：" + e.message); }
+  });
+  return {id:id, title:raw.title ? String(raw.title) : id, items:ok, bad:bad};
+}
+
+/* 同じ id がすでにあれば、まだ無い問題だけ後ろに足す */
+function importText(text){
+  var q = normalize(extractJSON(text));
+  var lib = load("lib", []), cur = load("quiz:" + q.id, null), added = 0;
+  if (cur){
+    var seen = {}; cur.items.forEach(function(it){ seen[itemKey(it)] = 1; });
+    q.items.forEach(function(it){ if (!seen[itemKey(it)]){ cur.items.push(it); seen[itemKey(it)] = 1; added++; } });
+    if (q.title !== q.id) cur.title = q.title;
+  } else { cur = {id:q.id, title:q.title, items:q.items, created:new Date().toISOString()}; added = q.items.length; }
+  if (!store("quiz:" + q.id, cur)) return;
+  lib = lib.filter(function(x){ return x !== q.id; }); lib.unshift(q.id); store("lib", lib);
+  return {quiz:cur, added:added, bad:q.bad};
+}
+
+/* ===== 出題 ===== */
+var QUIZ = null, st = null;
+function persist(){ if (QUIZ) store("state:" + QUIZ.id, st); }
+function A(i){ return st.a[i] || (st.a[i] = {chosen:null, slip:false, comment:""}); }
+function status(i){
+  if (QUIZ.items[i].type === "learn") return "learn";
+  var a = st.a[i]; if (!a || a.chosen === null || a.chosen === undefined) return "un";
+  if (a.chosen === -1) return "bl";
+  if (a.chosen === QUIZ.items[i].answer) return "ok";
+  return a.slip ? "slip" : "ng";
+}
+function counts(quiz, s){
+  var c = {ok:0, ng:0, bl:0, un:0, total:0};
+  quiz.items.forEach(function(it, i){
+    if (it.type === "learn") return; c.total++;
+    var a = s && s.a[i];
+    if (!a || a.chosen === null || a.chosen === undefined) c.un++;
+    else if (a.chosen === -1) c.bl++;
+    else if (a.chosen === it.answer || a.slip) c.ok++; else c.ng++;
+  });
+  return c;
+}
+function stats(){ var c = counts(QUIZ, st); $("sOk").textContent = c.ok; $("sNg").textContent = c.ng; $("sBl").textContent = c.bl; $("sLeft").textContent = c.un; }
+function chrome(inQuiz){
+  $("statline").style.display = inQuiz ? "" : "none"; $("toList").style.display = inQuiz ? "" : "none";
+  $("title").textContent = inQuiz ? QUIZ.title : "Quiz Player";
+}
+function open(id){
+  QUIZ = load("quiz:" + id, null); if (!QUIZ) return renderHome("問題が見つかりませんでした");
+  st = load("state:" + id, null) || {i:0, view:"q", a:{}};
+  if (st.i >= QUIZ.items.length) st.i = QUIZ.items.length - 1;
+  store("current", id); chrome(true);
+  st.view === "list" ? renderList() : renderQ();
+}
+function progress(){ return '<div class="bar"><div style="width:' + ((st.i + 1) / QUIZ.items.length * 100).toFixed(1) + '%"></div></div>'; }
+function renderLearn(){
+  var i = st.i, g = QUIZ.items[i];
+  var h = progress() + '<div class="card"><div class="qno">' + (i + 1) + ' / ' + QUIZ.items.length + '　新しい単語</div><h2>' + esc(g.title) + '</h2>';
+  g.words.forEach(function(w){
+    h += '<div class="lw"><div><span class="w">' + esc(w.word) + '</span>　<span class="stat">' + esc(w.pos) + '</span>　' + esc(w.meaning) + '</div>' +
+      (w.core ? '<div class="sub">' + esc(w.core) + '</div>' : '') +
+      (w.example ? '<div style="margin-top:4px">' + esc(w.example) + '</div><div class="sub">' + esc(w.example_ja) + '</div>' : '') + '</div>';
+  });
+  h += '<div class="nav"><button id="prev"' + (i === 0 ? ' disabled' : '') + '>← 前へ</button><button class="primary" id="next">問題へ →</button></div>' +
+    '<div class="keys">Enter / → で問題へ。問題中に ← で戻って見直せます</div></div>';
+  $("main").innerHTML = h; $("prev").onclick = prev; $("next").onclick = next; stats(); persist(); scrollTo(0, 0);
+}
+function renderQ(){
+  st.view = "q"; chrome(true);
+  if (QUIZ.items[st.i].type === "learn") return renderLearn();
+  var i = st.i, q = QUIZ.items[i], a = st.a[i], answered = a && a.chosen !== null && a.chosen !== undefined;
+  var sent = esc(q.sentence).replace(/_{2,}/, '<b style="letter-spacing:2px">_____</b>');
+  var h = progress() + '<div class="card"><div class="qno">' + (i + 1) + ' / ' + QUIZ.items.length + '</div><div class="sentence">' + sent + '</div><div class="opts">';
+  q.options.forEach(function(o, k){
+    var cls = "opt"; if (answered){ if (k === q.answer) cls += " correct"; else if (k === a.chosen) cls += " wrong"; }
+    h += '<button class="' + cls + '" data-k="' + k + '"' + (answered ? ' disabled' : '') + '><span class="k">' + L[k] + '</span>' + esc(o) + '</button>';
+  });
+  h += '</div><div class="row"><button id="blank"' + (answered ? ' disabled' : '') + '>わからない（空欄）</button></div>';
+  if (answered){
+    var s = status(i), right = L[q.answer] + '（' + esc(q.options[q.answer]) + '）';
+    var v = s === "ok" ? '<span class="v ok">正解</span>' : s === "bl" ? '<span class="v bl">空欄</span>　正解は ' + right : '<span class="v ng">不正解</span>　正解は ' + right;
+    h += '<div class="fb">' + v + (q.ja ? '<div class="ja">' + esc(q.ja) + '</div>' : '') + (q.note ? '<div class="note">' + esc(q.note) + '</div>' : '');
+    if (s === "ng" || s === "slip") h += '<label class="slip"><input type="checkbox" id="slip"' + (a.slip ? ' checked' : '') + '> 押し間違い（M）</label>';
+    h += '</div>';
+  }
+  h += '<textarea id="cm" placeholder="コメント・質問（任意）">' + esc(A(i).comment) + '</textarea>' +
+    '<div class="nav"><button id="prev"' + (i === 0 ? ' disabled' : '') + '>← 前へ</button><button class="primary" id="next">' + (i === QUIZ.items.length - 1 ? '一覧・結果へ' : '次へ →') + '</button></div>' +
+    '<div class="keys">1〜4 / A〜D：選択　0 / X：空欄　Enter / →：次へ　←：前へ　M：押し間違い　コメント欄では Ctrl+Enter で次へ・Esc で抜ける</div></div>';
+  $("main").innerHTML = h;
+  Array.prototype.forEach.call(document.querySelectorAll(".opt"), function(b){ b.onclick = function(){ choose(+b.getAttribute("data-k")); }; });
+  $("blank").onclick = function(){ choose(-1); };
+  $("prev").onclick = prev; $("next").onclick = next;
+  $("cm").oninput = function(e){ A(i).comment = e.target.value; persist(); };
+  if ($("slip")) $("slip").onchange = function(e){ A(i).slip = e.target.checked; persist(); stats(); renderQ(); };
+  stats(); persist();
+}
+function choose(k){ if (QUIZ.items[st.i].type === "learn") return; var a = A(st.i); if (a.chosen !== null && a.chosen !== undefined) return; a.chosen = k; persist(); renderQ(); }
+function next(){ if (st.i < QUIZ.items.length - 1){ st.i++; renderQ(); scrollTo(0, 0); } else renderList(); }
+function prev(){ if (st.i > 0){ st.i--; renderQ(); scrollTo(0, 0); } }
+
+/* ===== 一覧・結果 ===== */
+function results(){
+  var n = 0, items = [];
+  QUIZ.items.forEach(function(q, i){
+    if (q.type === "learn") return; n++;
+    var a = st.a[i] || {}, s = status(i), c = a.chosen;
+    items.push({n:n, word:q.word, status:s, chosen:(c === -1 || c === null || c === undefined) ? null : q.options[c], answer:q.options[q.answer], comment:a.comment || ""});
+  });
+  return {quiz:QUIZ.id, saved_at:new Date().toISOString(), items:items};
+}
+function resultText(){ var r = results(); return '{"quiz":' + JSON.stringify(r.quiz) + ',"saved_at":' + JSON.stringify(r.saved_at) + ',"items":[\n' + r.items.map(function(x){ return JSON.stringify(x); }).join(",\n") + '\n]}'; }
+function renderList(){
+  st.view = "list"; persist(); stats(); chrome(true);
+  var lab = {ok:"✓ 正解", slip:"✓ 押し間違い", ng:"✗ 不正解", bl:"空欄", un:"未回答"}, cls = {ok:"r-ok", slip:"r-ok", ng:"r-ng", bl:"r-bl", un:"r-un"};
+  var h = '<div class="card"><div class="row" style="margin-top:0"><button class="primary" id="copy">結果をコピー</button><button id="back">問題に戻る</button></div>' +
+    '<p class="stat">コピーした結果をチャットに貼り付けて送ってください。未回答の問題は「un」として入ります。</p><div id="copyArea"></div>' +
+    '<table><tr><th>#</th><th>単語</th><th>結果</th><th>コメント</th></tr>', n = 0;
+  QUIZ.items.forEach(function(q, i){
+    var s = status(i);
+    if (s === "learn"){ h += '<tr class="go" data-i="' + i + '"><td></td><td colspan="3"><b>' + esc(q.title) + '</b></td></tr>'; return; }
+    n++; h += '<tr class="go" data-i="' + i + '"><td>' + n + '</td><td>' + esc(q.word) + '</td><td class="' + cls[s] + '">' + lab[s] + '</td><td>' + esc((st.a[i] || {}).comment || "") + '</td></tr>';
+  });
+  h += '</table></div>';
+  $("main").innerHTML = h; scrollTo(0, 0);
+  Array.prototype.forEach.call(document.querySelectorAll("tr.go"), function(r){ r.onclick = function(){ st.i = +r.getAttribute("data-i"); renderQ(); scrollTo(0, 0); }; });
+  $("copy").onclick = copyResults; $("back").onclick = function(){ renderQ(); };
+}
+function copyResults(){
+  var text = resultText();
+  function fallback(){
+    $("copyArea").innerHTML = '<textarea class="big" id="rt" readonly></textarea><p class="stat">自動でコピーできませんでした。上の欄を長押し →「すべてを選択」→「コピー」してください。</p>';
+    var ta = $("rt"); ta.value = text; ta.focus(); ta.setSelectionRange(0, text.length);
+    try { if (document.execCommand("copy")) toast("コピーしました。チャットに貼り付けてください"); } catch(e){}
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function(){ toast("コピーしました。チャットに貼り付けてください"); }, fallback);
+  else fallback();
+}
+
+/* ===== 問題集（ホーム） ===== */
+function renderHome(msg){
+  QUIZ = null; chrome(false); drop("current");
+  var lib = load("lib", []);
+  var h = '<div class="card"><h2>問題を読み込む</h2>' + (msg ? '<p class="err">' + esc(msg) + '</p>' : '') +
+    '<p class="stat">チャットでもらった問題データ（JSON）を貼り付けてください。分けて届いた場合は、同じ id のものを続けて読み込むと後ろに追加されます。</p>' +
+    '<textarea class="big" id="paste" placeholder="ここに貼り付け"></textarea>' +
+    '<div class="row"><button class="primary" id="go">読み込む</button><button id="pasteBtn">クリップボードから貼り付け</button></div>' +
+    '<div class="row"><label class="stat">ファイルから：<input type="file" id="file" accept=".json,.txt,application/json,text/plain"></label></div></div>';
+  h += '<div class="card"><h2>問題集</h2>';
+  if (!lib.length) h += '<p class="stat">まだありません。</p>';
+  lib.forEach(function(id){
+    var q = load("quiz:" + id, null); if (!q) return;
+    var c = counts(q, load("state:" + id, null));
+    h += '<div class="qrow"><div class="grow"><b>' + esc(q.title) + '</b><div class="stat">' + c.total + '問・正解 ' + c.ok + '・不正解 ' + c.ng + '・空欄 ' + c.bl + '・残り ' + c.un + '</div></div>' +
+      '<button class="primary" data-open="' + esc(id) + '">開く</button><button class="danger" data-del="' + esc(id) + '">削除</button></div>';
+  });
+  h += '</div><p class="stat">データはこの端末のブラウザの中にだけ保存されます。</p>';
+  $("main").innerHTML = h;
+  $("go").onclick = function(){ doImport($("paste").value); };
+  $("pasteBtn").onclick = function(){
+    if (!navigator.clipboard || !navigator.clipboard.readText) return toast("この環境では使えません。欄を長押しして貼り付けてください");
+    navigator.clipboard.readText().then(function(t){ $("paste").value = t; doImport(t); }, function(){ toast("読み取れませんでした。欄を長押しして貼り付けてください"); });
+  };
+  $("file").onchange = function(e){ var f = e.target.files[0]; if (!f) return; var r = new FileReader(); r.onload = function(){ doImport(r.result); }; r.readAsText(f); };
+  Array.prototype.forEach.call(document.querySelectorAll("[data-open]"), function(b){ b.onclick = function(){ open(b.getAttribute("data-open")); }; });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-del]"), function(b){ b.onclick = function(){
+    var id = b.getAttribute("data-del");
+    if (!confirm("「" + id + "」と回答の記録を削除しますか？\n（結果をコピーしていなければ先にコピーしてください）")) return;
+    drop("quiz:" + id); drop("state:" + id); store("lib", load("lib", []).filter(function(x){ return x !== id; })); renderHome();
+  }; });
+}
+function doImport(text){
+  var r;
+  try { r = importText(text); } catch(e){ return renderHome("読み込めませんでした：" + e.message); }
+  if (!r) return;
+  var qn = r.quiz.items.filter(function(x){ return x.type !== "learn"; }).length;
+  var msg = "「" + r.quiz.id + "」に " + r.added + " 件追加（合計 " + qn + " 問）";
+  if (r.bad.length){ renderHome(msg + "\n次の " + r.bad.length + " 件は壊れていたので飛ばしました：\n・" + r.bad.join("\n・")); return; }
+  toast(msg); open(r.quiz.id);
+}
+
+/* ===== 使い方（README.md をそのまま表示） ===== */
+function renderHelp(){
+  if (QUIZ) persist();
+  QUIZ = null; chrome(false);
+  $("main").innerHTML = '<div class="card"><div class="row" style="margin-top:0"><button class="primary" id="copySpec" disabled>AI への指示（形式の説明）をコピー</button></div>' +
+    '<div id="specArea"></div><pre id="readme" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.6;margin:14px 0 0">読み込み中…</pre></div>';
+  scrollTo(0, 0);
+  fetch("README.md", {cache:"no-cache"}).then(function(r){ if (!r.ok) throw new Error(r.status); return r.text(); }).then(function(md){
+    $("readme").textContent = md;
+    var m = md.match(/````[^\n]*\n([\s\S]*?)\n````/);
+    if (!m) return;
+    var spec = m[1]; $("copySpec").disabled = false;
+    $("copySpec").onclick = function(){
+      function fallback(){
+        $("specArea").innerHTML = '<textarea class="big" id="st" readonly></textarea><p class="stat">上の欄を長押し →「すべてを選択」→「コピー」してください。</p>';
+        var ta = $("st"); ta.value = spec; ta.focus(); ta.setSelectionRange(0, spec.length);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(spec).then(function(){ toast("コピーしました"); }, fallback); else fallback();
+    };
+  }).catch(function(){ $("readme").textContent = "README.md を読み込めませんでした（ネットにつながっているときに開いてください）。"; });
+}
+
+/* ===== キー操作（PC） ===== */
+document.addEventListener("keydown", function(e){
+  if (!QUIZ || st.view !== "q") return;
+  if (e.target.tagName === "TEXTAREA"){ if (e.key === "Escape") e.target.blur(); else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); next(); } return; }
+  var k = e.key.toLowerCase(), m = {"1":0, "2":1, "3":2, "4":3, "a":0, "b":1, "c":2, "d":3};
+  if (k in m){ e.preventDefault(); if (m[k] < QUIZ.items[st.i].options.length) choose(m[k]); }
+  else if (k === "0" || k === "x"){ e.preventDefault(); choose(-1); }
+  else if (k === "enter" || k === "arrowright"){ e.preventDefault(); next(); }
+  else if (k === "arrowleft"){ e.preventDefault(); prev(); }
+  else if (k === "m"){ var c = $("slip"); if (c){ c.checked = !c.checked; c.onchange({target:c}); } }
+});
+$("toList").onclick = function(){ if (QUIZ) renderList(); };
+$("toHome").onclick = function(){ renderHome(); };
+$("toHelp").onclick = renderHelp;
+(function(){ var id = load("current", null); if (id && load("quiz:" + id, null)) open(id); else renderHome(); })();
+</script>
+</body>
+</html>
