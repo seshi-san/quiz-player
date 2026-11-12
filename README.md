@@ -34,6 +34,12 @@
          "example": "英語の例文", "example_ja": "例文の和訳"}
       ]
     },
+    {                           // 長文（任意）。注釈の語は点線で表示され、タップすると意味が出る
+      "type": "passage",
+      "title": "社内メール",
+      "text": "We need to recruit 20 volunteers ...",   // 改行は \n
+      "gloss": {"recruit": "採用する"}                  // 語 → 意味（大文字小文字は区別しない）
+    },
     {                           // 4択問題
       "word": "besides",        // 記録に使う見出し語
       "sentence": "___ a salary, employees receive free meals.",   // 空欄は ___
@@ -41,7 +47,8 @@
       "answer": "Besides",      // 正解の選択肢の文字列（0始まりの番号でも可）
       "ja": "和訳",              // 任意。解答後に表示
       "note": "解説",            // 任意。解答後に表示
-      "recall": true            // 任意。この問題だけ「思い出してから選択肢を見る」方式にする
+      "recall": true,           // 任意。この問題だけ「思い出してから選択肢を見る」方式にする
+      "passage": true           // 任意。直前の長文を問題の上に表示する（注釈もタップできる）
     }
   ]
 }
@@ -58,11 +65,13 @@
 「結果をコピー」で次の形の JSON がコピーされます。
 
 ```
-{"quiz":"2026-11-12","saved_at":"2026-11-12T08:15:00.000Z","items":[
+{"quiz":"2026-11-12","saved_at":"2026-11-12T08:15:00.000Z","looked_up":["recruit"],"items":[
 {"n":1,"word":"besides","status":"ok","chosen":"Besides","answer":"Besides","comment":""},
 {"n":2,"word":"meanwhile","status":"ng","chosen":"Unlike","answer":"Meanwhile","comment":"迷った"}
 ]}
 ```
+
+looked_up は、長文の中でタップして意味を見た語の一覧です。
 
 | status | 意味 |
 |---|---|
