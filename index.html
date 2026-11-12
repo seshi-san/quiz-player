@@ -40,7 +40,7 @@ textarea{width:100%;min-height:56px;margin-top:12px;font:inherit;font-size:16px;
 textarea.big{min-height:160px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
 .keys{font-size:12px;color:var(--muted);margin-top:12px}
 @media (hover:none){.keys{display:none}}
-.nav{display:flex;justify-content:space-between;gap:8px;margin-top:14px}
+.nav{display:flex;justify-content:space-between;gap:8px;margin-top:14px;position:sticky;bottom:0;z-index:3;background:var(--card);padding:10px 0 calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
 .nav button{flex:1}
 table{width:100%;border-collapse:collapse;font-size:14px}
 td,th{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
@@ -52,8 +52,10 @@ tr.go{cursor:pointer}
 .err{color:var(--ng);font-size:14px;white-space:pre-wrap}
 .qrow{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding:10px 0}
 .qrow .grow{flex:1;min-width:0}
+.hidden-opts{padding:14px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:14px;text-align:center}
+.r-gs{color:var(--blank)}
 .toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;display:none;max-width:90vw;z-index:9}
-@media (max-width:520px){.sentence{font-size:18px}.opt{font-size:16px}.card{padding:14px}}
+@media (max-width:520px){.sentence{font-size:18px;margin-bottom:12px}.opt{font-size:16px;min-height:44px;padding:9px 12px}.opts{gap:6px}.card{padding:14px}header{padding-top:8px}header button{min-height:34px;padding:4px 10px}textarea{min-height:44px}}
 </style>
 </head>
 <body>
@@ -100,7 +102,7 @@ function normalize(raw){
   var id = String(raw.id || "").trim();
   if (!id) throw new Error("id がありません（例：\"id\": \"2026-11-12\"）");
   if (!Array.isArray(raw.items)) throw new Error("items（問題の配列）がありません");
-  var shuffle = raw.shuffle !== false, ok = [], bad = [];
+  var shuffle = raw.shuffle !== false, recallAll = raw.recall === true, ok = [], bad = [];
   raw.items.forEach(function(it, n){
     var where = (n + 1) + "番目" + (it && it.word ? "（" + it.word + "）" : it && it.title ? "（" + it.title + "）" : "");
     try {
@@ -116,7 +118,8 @@ function normalize(raw){
       var opts = it.options.map(String), ans = it.answer;
       if (typeof ans === "string"){ var k = opts.indexOf(ans); if (k < 0) throw new Error("answer「" + ans + "」が options にない"); ans = k; }
       if (typeof ans !== "number" || ans % 1 || ans < 0 || ans >= opts.length) throw new Error("answer が範囲外");
-      var q = {word:String(it.word || opts[ans]), sentence:it.sentence, options:opts, answer:ans, ja:it.ja || "", note:it.note || ""};
+      var q = {word:String(it.word || opts[ans]), sentence:it.sentence, options:opts, answer:ans, ja:it.ja || "", note:it.note || "",
+        recall:(it.recall === undefined ? recallAll : it.recall === true)};
       if (shuffle){
         var r = rng(hash(id + "|" + q.word + "|" + q.sentence)), order = opts.map(function(_, i){ return i; });
         for (var i = order.length - 1; i > 0; i--){ var j = Math.floor(r() * (i + 1)); var t = order[i]; order[i] = order[j]; order[j] = t; }
@@ -145,12 +148,12 @@ function importText(text){
 /* ===== 出題 ===== */
 var QUIZ = null, st = null;
 function persist(){ if (QUIZ) store("state:" + QUIZ.id, st); }
-function A(i){ return st.a[i] || (st.a[i] = {chosen:null, slip:false, comment:""}); }
+function A(i){ return st.a[i] || (st.a[i] = {chosen:null, slip:false, guess:false, shown:false, comment:""}); }
 function status(i){
   if (QUIZ.items[i].type === "learn") return "learn";
   var a = st.a[i]; if (!a || a.chosen === null || a.chosen === undefined) return "un";
   if (a.chosen === -1) return "bl";
-  if (a.chosen === QUIZ.items[i].answer) return "ok";
+  if (a.chosen === QUIZ.items[i].answer) return a.guess ? "guess" : "ok";
   return a.slip ? "slip" : "ng";
 }
 function counts(quiz, s){
@@ -160,7 +163,7 @@ function counts(quiz, s){
     var a = s && s.a[i];
     if (!a || a.chosen === null || a.chosen === undefined) c.un++;
     else if (a.chosen === -1) c.bl++;
-    else if (a.chosen === it.answer || a.slip) c.ok++; else c.ng++;
+    else if ((a.chosen === it.answer && !a.guess) || a.slip) c.ok++; else if (a.chosen === it.answer && a.guess) c.bl++; else c.ng++;
   });
   return c;
 }
@@ -194,31 +197,42 @@ function renderQ(){
   if (QUIZ.items[st.i].type === "learn") return renderLearn();
   var i = st.i, q = QUIZ.items[i], a = st.a[i], answered = a && a.chosen !== null && a.chosen !== undefined;
   var sent = esc(q.sentence).replace(/_{2,}/, '<b style="letter-spacing:2px">_____</b>');
-  var h = progress() + '<div class="card"><div class="qno">' + (i + 1) + ' / ' + QUIZ.items.length + '</div><div class="sentence">' + sent + '</div><div class="opts">';
-  q.options.forEach(function(o, k){
-    var cls = "opt"; if (answered){ if (k === q.answer) cls += " correct"; else if (k === a.chosen) cls += " wrong"; }
-    h += '<button class="' + cls + '" data-k="' + k + '"' + (answered ? ' disabled' : '') + '><span class="k">' + L[k] + '</span>' + esc(o) + '</button>';
-  });
-  h += '</div><div class="row"><button id="blank"' + (answered ? ' disabled' : '') + '>わからない（空欄）</button></div>';
+  var gate = q.recall && !answered && !(a && a.shown);
+  var h = progress() + '<div class="card"><div class="qno">' + (i + 1) + ' / ' + QUIZ.items.length + (q.recall ? '　まず思い出す' : '') + '</div><div class="sentence">' + sent + '</div>';
+  if (gate){
+    h += '<div class="hidden-opts">選択肢はまだ隠れています。頭の中で意味（答え）を思い浮かべてから押してください</div>' +
+      '<div class="row"><button class="primary" id="reveal">思い浮かんだ → 選択肢を見る（R）</button><button id="blank">思い出せない（空欄）</button></div>';
+  } else {
+    h += '<div class="opts">';
+    q.options.forEach(function(o, k){
+      var cls = "opt"; if (answered){ if (k === q.answer) cls += " correct"; else if (k === a.chosen) cls += " wrong"; }
+      h += '<button class="' + cls + '" data-k="' + k + '"' + (answered ? ' disabled' : '') + '><span class="k">' + L[k] + '</span>' + esc(o) + '</button>';
+    });
+    h += '</div><div class="row"><button id="blank"' + (answered ? ' disabled' : '') + '>わからない（空欄）</button></div>';
+  }
   if (answered){
     var s = status(i), right = L[q.answer] + '（' + esc(q.options[q.answer]) + '）';
-    var v = s === "ok" ? '<span class="v ok">正解</span>' : s === "bl" ? '<span class="v bl">空欄</span>　正解は ' + right : '<span class="v ng">不正解</span>　正解は ' + right;
+    var v = s === "ok" ? '<span class="v ok">正解</span>' : s === "guess" ? '<span class="v bl">正解（勘）</span>' : s === "bl" ? '<span class="v bl">空欄</span>　正解は ' + right : '<span class="v ng">不正解</span>　正解は ' + right;
     h += '<div class="fb">' + v + (q.ja ? '<div class="ja">' + esc(q.ja) + '</div>' : '') + (q.note ? '<div class="note">' + esc(q.note) + '</div>' : '');
     if (s === "ng" || s === "slip") h += '<label class="slip"><input type="checkbox" id="slip"' + (a.slip ? ' checked' : '') + '> 押し間違い（M）</label>';
+    if (s === "ok" || s === "guess") h += '<label class="slip"><input type="checkbox" id="guess"' + (a.guess ? ' checked' : '') + '> 勘・消去法で当たった（G）</label>';
     h += '</div>';
   }
   h += '<textarea id="cm" placeholder="コメント・質問（任意）">' + esc(A(i).comment) + '</textarea>' +
     '<div class="nav"><button id="prev"' + (i === 0 ? ' disabled' : '') + '>← 前へ</button><button class="primary" id="next">' + (i === QUIZ.items.length - 1 ? '一覧・結果へ' : '次へ →') + '</button></div>' +
-    '<div class="keys">1〜4 / A〜D：選択　0 / X：空欄　Enter / →：次へ　←：前へ　M：押し間違い　コメント欄では Ctrl+Enter で次へ・Esc で抜ける</div></div>';
+    '<div class="keys">R / スペース：選択肢を見る　G：勘で当たった　1〜4 / A〜D：選択　0 / X：空欄　Enter / →：次へ　←：前へ　M：押し間違い　コメント欄では Ctrl+Enter で次へ・Esc で抜ける</div></div>';
   $("main").innerHTML = h;
   Array.prototype.forEach.call(document.querySelectorAll(".opt"), function(b){ b.onclick = function(){ choose(+b.getAttribute("data-k")); }; });
+  if ($("reveal")) $("reveal").onclick = reveal;
+  if ($("guess")) $("guess").onchange = function(e){ A(i).guess = e.target.checked; persist(); stats(); renderQ(); };
   $("blank").onclick = function(){ choose(-1); };
   $("prev").onclick = prev; $("next").onclick = next;
   $("cm").oninput = function(e){ A(i).comment = e.target.value; persist(); };
   if ($("slip")) $("slip").onchange = function(e){ A(i).slip = e.target.checked; persist(); stats(); renderQ(); };
   stats(); persist();
 }
-function choose(k){ if (QUIZ.items[st.i].type === "learn") return; var a = A(st.i); if (a.chosen !== null && a.chosen !== undefined) return; a.chosen = k; persist(); renderQ(); }
+function reveal(){ var q = QUIZ.items[st.i]; if (q.type === "learn" || !q.recall) return; var a = A(st.i); if (a.chosen !== null && a.chosen !== undefined) return; a.shown = true; persist(); renderQ(); }
+function choose(k){ if (QUIZ.items[st.i].type === "learn") return; var a = A(st.i); if (a.chosen !== null && a.chosen !== undefined) return; if (k >= 0 && QUIZ.items[st.i].recall && !a.shown) return; a.chosen = k; persist(); renderQ(); }
 function next(){ if (st.i < QUIZ.items.length - 1){ st.i++; renderQ(); scrollTo(0, 0); } else renderList(); }
 function prev(){ if (st.i > 0){ st.i--; renderQ(); scrollTo(0, 0); } }
 
@@ -235,7 +249,7 @@ function results(){
 function resultText(){ var r = results(); return '{"quiz":' + JSON.stringify(r.quiz) + ',"saved_at":' + JSON.stringify(r.saved_at) + ',"items":[\n' + r.items.map(function(x){ return JSON.stringify(x); }).join(",\n") + '\n]}'; }
 function renderList(){
   st.view = "list"; persist(); stats(); chrome(true);
-  var lab = {ok:"✓ 正解", slip:"✓ 押し間違い", ng:"✗ 不正解", bl:"空欄", un:"未回答"}, cls = {ok:"r-ok", slip:"r-ok", ng:"r-ng", bl:"r-bl", un:"r-un"};
+  var lab = {ok:"✓ 正解", slip:"✓ 押し間違い", guess:"△ 勘で正解", ng:"✗ 不正解", bl:"空欄", un:"未回答"}, cls = {ok:"r-ok", slip:"r-ok", guess:"r-gs", ng:"r-ng", bl:"r-bl", un:"r-un"};
   var h = '<div class="card"><div class="row" style="margin-top:0"><button class="primary" id="copy">結果をコピー</button><button id="back">問題に戻る</button></div>' +
     '<p class="stat">コピーした結果をチャットに貼り付けて送ってください。未回答の問題は「un」として入ります。</p><div id="copyArea"></div>' +
     '<table><tr><th>#</th><th>単語</th><th>結果</th><th>コメント</th></tr>', n = 0;
@@ -334,6 +348,8 @@ document.addEventListener("keydown", function(e){
   else if (k === "enter" || k === "arrowright"){ e.preventDefault(); next(); }
   else if (k === "arrowleft"){ e.preventDefault(); prev(); }
   else if (k === "m"){ var c = $("slip"); if (c){ c.checked = !c.checked; c.onchange({target:c}); } }
+  else if (k === "g"){ var g = $("guess"); if (g){ g.checked = !g.checked; g.onchange({target:g}); } }
+  else if (k === "r" || k === " "){ e.preventDefault(); reveal(); }
 });
 $("toList").onclick = function(){ if (QUIZ) renderList(); };
 $("toHome").onclick = function(){ renderHome(); };
