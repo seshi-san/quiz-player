@@ -141,7 +141,7 @@ function normalize(raw){
       ok.push(q);
     } catch(e){ bad.push(where + "：" + e.message); }
   });
-  return {id:id, title:raw.title ? String(raw.title) : id, items:ok, bad:bad};
+  return {id:id, title:raw.title ? String(raw.title) : id, items:ok, bad:bad, drill:raw.drill === true};
 }
 
 /* 同じ id がすでにあれば、まだ無い問題だけ後ろに足す */
@@ -152,7 +152,8 @@ function importText(text){
     var seen = {}; cur.items.forEach(function(it){ seen[itemKey(it)] = 1; });
     q.items.forEach(function(it){ if (!seen[itemKey(it)]){ cur.items.push(it); seen[itemKey(it)] = 1; added++; } });
     if (q.title !== q.id) cur.title = q.title;
-  } else { cur = {id:q.id, title:q.title, items:q.items, created:new Date().toISOString()}; added = q.items.length; }
+    if (q.drill) cur.drill = true;
+  } else { cur = {id:q.id, title:q.title, items:q.items, drill:q.drill, created:new Date().toISOString()}; added = q.items.length; }
   if (!store("quiz:" + q.id, cur)) return;
   lib = lib.filter(function(x){ return x !== q.id; }); lib.unshift(q.id); store("lib", lib);
   return {quiz:cur, added:added, bad:q.bad};
@@ -237,7 +238,7 @@ function renderQ(){
   var i = st.i, q = QUIZ.items[i], a = st.a[i], answered = a && a.chosen !== null && a.chosen !== undefined;
   var sent = esc(q.sentence).replace(/_{2,}/, '<b style="letter-spacing:2px">_____</b>');
   var gate = q.recall && !answered && !(a && a.shown);
-  var h = progress() + '<div class="card"><div class="qno">' + (i + 1) + ' / ' + QUIZ.items.length + (q.recall ? '　まず思い出す' : '') + '</div>' + (q.withPassage && lastPassage(i) ? '<div class="psg ref">' + passageHTML(lastPassage(i)) + '</div>' : '') + '<div class="sentence">' + sent + '</div>';
+  var h = progress() + '<div class="card"><div class="qno">' + (i + 1) + ' / ' + QUIZ.items.length + (q.recall ? '　まず思い出す' : '') + (q.attempt ? '　<b>やり直し ' + (q.attempt - 1) + ' 回目</b>' : '') + '</div>' + (q.withPassage && lastPassage(i) ? '<div class="psg ref">' + passageHTML(lastPassage(i)) + '</div>' : '') + '<div class="sentence">' + sent + '</div>';
   if (gate && q.typed){
     h += '<div class="hidden-opts">意味を日本語で入力してください（ひらがな・略記でよい）。送信すると直せません。そのあと選択肢が出ます。何も打たずに送信すると「思い出せない」になります</div>' +
       '<input id="ty" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="意味を入力して Enter" style="width:100%;box-sizing:border-box;font-size:18px;padding:10px;margin:8px 0">' +
@@ -264,7 +265,7 @@ function renderQ(){
     h += '</div>';
   }
   h += '<textarea id="cm" placeholder="コメント・質問（任意）">' + esc(A(i).comment) + '</textarea>' +
-    '<div class="nav"><button id="prev"' + (i === 0 ? ' disabled' : '') + '>← 前へ</button><button class="primary" id="next">' + (i === QUIZ.items.length - 1 ? '一覧・結果へ' : '次へ →') + '</button></div>' +
+    '<div class="nav"><button id="prev"' + (i === 0 ? ' disabled' : '') + '>← 前へ</button><button class="primary" id="next">' + (i === QUIZ.items.length - 1 && !(QUIZ.drill && answered && !a.requeued && ["ng", "bl", "guess"].indexOf(status(i)) >= 0) ? '一覧・結果へ' : '次へ →') + '</button></div>' +
     '<div class="keys">R / スペース：選択肢を見る　G：勘で当たった　1〜4 / A〜D：選択　0 / X：空欄　Enter / →：次へ　←：前へ　M：押し間違い　コメント欄では Ctrl+Enter で次へ・Esc で抜ける</div></div>';
   $("main").innerHTML = h;
   Array.prototype.forEach.call(document.querySelectorAll(".opt"), function(b){ b.onclick = function(){ choose(+b.getAttribute("data-k")); }; });
@@ -287,8 +288,18 @@ function submitTyped(){
 }
 function reveal(){ var q = QUIZ.items[st.i]; if (q.type || !q.recall || q.typed) return; var a = A(st.i); if (a.chosen !== null && a.chosen !== undefined) return; a.shown = true; persist(); renderQ(); }
 function choose(k){ if (QUIZ.items[st.i].type) return; var a = A(st.i); if (a.chosen !== null && a.chosen !== undefined) return; if (k >= 0 && QUIZ.items[st.i].recall && !a.shown) return; a.chosen = k; persist(); renderQ(); }
-function next(){ if (st.i < QUIZ.items.length - 1){ st.i++; renderQ(); scrollTo(0, 0); } else renderList(); }
-function prev(){ if (st.i > 0){ st.i--; renderQ(); scrollTo(0, 0); } }
+/* drill：外した問題（不正解・空欄・勘）を、選択肢を並べ替えて最後尾にもう一度足す。全問1回正解するまで続く */
+function requeue(i){
+  var q = QUIZ.items[i], a = st.a[i];
+  if (!QUIZ.drill || q.type || !a || a.requeued || a.chosen === null || a.chosen === undefined) return;
+  var s = status(i); if (s === "ok" || s === "slip") return;
+  var t = (q.attempt || 1) + 1, r = rng(hash(QUIZ.id + "|" + q.word + "|" + q.sentence + "|" + t)), order = q.options.map(function(_, k){ return k; });
+  for (var k = order.length - 1; k > 0; k--){ var j = Math.floor(r() * (k + 1)); var x = order[k]; order[k] = order[j]; order[j] = x; }
+  var c = JSON.parse(JSON.stringify(q)); c.options = order.map(function(k){ return q.options[k]; }); c.answer = order.indexOf(q.answer); c.attempt = t;
+  QUIZ.items.push(c); a.requeued = true; store("quiz:" + QUIZ.id, QUIZ); persist();
+}
+function next(){ requeue(st.i); if (st.i < QUIZ.items.length - 1){ st.i++; renderQ(); scrollTo(0, 0); } else renderList(); }
+function prev(){ requeue(st.i); if (st.i > 0){ st.i--; renderQ(); scrollTo(0, 0); } }
 
 /* ===== 一覧・結果 ===== */
 function results(){
@@ -299,6 +310,7 @@ function results(){
     var picked = a.blankFirst && c !== -1 && c !== null && c !== undefined;
     var it = {n:n, word:q.word, status:s, chosen:(c === -1 || c === null || c === undefined || picked) ? null : q.options[c], answer:q.options[q.answer], comment:a.comment || ""};
     if (a.blankFirst) it.pick = picked ? q.options[c] : null;
+    if (q.attempt) it["try"] = q.attempt;
     if (q.typed){ it.mode = "typed_v1"; it.typed = typeof a.typed === "string" ? a.typed : null; it.typed_ms = a.typedMs == null ? null : a.typedMs; }
     items.push(it);
   });
@@ -314,7 +326,7 @@ function renderList(){
   QUIZ.items.forEach(function(q, i){
     var s = status(i);
     if (s === "learn"){ h += '<tr class="go" data-i="' + i + '"><td></td><td colspan="3"><b>' + esc(q.title) + '</b>' + (q.type === "passage" && st.look ? '<div class="stat">タップした語：' + esc(Object.keys(st.look).join(", ")) + '</div>' : '') + '</td></tr>'; return; }
-    n++; h += '<tr class="go" data-i="' + i + '"><td>' + n + '</td><td>' + esc(q.word) + '</td><td class="' + cls[s] + '">' + lab[s] + '</td><td>' + esc((st.a[i] || {}).comment || "") + '</td></tr>';
+    n++; h += '<tr class="go" data-i="' + i + '"><td>' + n + '</td><td>' + esc(q.word) + (q.attempt ? '<div class="stat">やり直し ' + (q.attempt - 1) + ' 回目</div>' : '') + '</td><td class="' + cls[s] + '">' + lab[s] + '</td><td>' + esc((st.a[i] || {}).comment || "") + '</td></tr>';
   });
   h += '</table></div>';
   $("main").innerHTML = h; scrollTo(0, 0);
@@ -410,7 +422,7 @@ document.addEventListener("keydown", function(e){
   else if (k === "g"){ var g = $("guess"); if (g){ g.checked = !g.checked; g.onchange({target:g}); } }
   else if (k === "r" || k === " "){ e.preventDefault(); reveal(); }
 });
-$("toList").onclick = function(){ if (QUIZ) renderList(); };
+$("toList").onclick = function(){ if (QUIZ){ if (st.view === "q") requeue(st.i); renderList(); } };
 $("toHome").onclick = function(){ renderHome(); };
 $("toHelp").onclick = renderHelp;
 (function(){ var id = load("current", null); if (id && load("quiz:" + id, null)) open(id); else renderHome(); })();
