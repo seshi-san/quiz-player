@@ -130,7 +130,9 @@ function normalize(raw){
       if (typeof ans === "string"){ var k = opts.indexOf(ans); if (k < 0) throw new Error("answer「" + ans + "」が options にない"); ans = k; }
       if (typeof ans !== "number" || ans % 1 || ans < 0 || ans >= opts.length) throw new Error("answer が範囲外");
       var q = {word:String(it.word || opts[ans]), sentence:it.sentence, options:opts, answer:ans, ja:it.ja || "", note:it.note || "",
-        recall:(it.recall === undefined ? recallAll : it.recall === true), withPassage:it.passage === true};
+        recall:(it.recall === undefined ? recallAll : it.recall === true), withPassage:it.passage === true,
+        typed:(it.typed === undefined ? raw.typed === true : it.typed === true)};
+      if (q.typed) q.recall = true;
       if (shuffle){
         var r = rng(hash(id + "|" + q.word + "|" + q.sentence)), order = opts.map(function(_, i){ return i; });
         for (var i = order.length - 1; i > 0; i--){ var j = Math.floor(r() * (i + 1)); var t = order[i]; order[i] = order[j]; order[j] = t; }
@@ -236,10 +238,15 @@ function renderQ(){
   var sent = esc(q.sentence).replace(/_{2,}/, '<b style="letter-spacing:2px">_____</b>');
   var gate = q.recall && !answered && !(a && a.shown);
   var h = progress() + '<div class="card"><div class="qno">' + (i + 1) + ' / ' + QUIZ.items.length + (q.recall ? '　まず思い出す' : '') + '</div>' + (q.withPassage && lastPassage(i) ? '<div class="psg ref">' + passageHTML(lastPassage(i)) + '</div>' : '') + '<div class="sentence">' + sent + '</div>';
-  if (gate){
+  if (gate && q.typed){
+    h += '<div class="hidden-opts">意味を日本語で入力してください（ひらがな・略記でよい）。送信すると直せません。そのあと選択肢が出ます。何も打たずに送信すると「思い出せない」になります</div>' +
+      '<input id="ty" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="意味を入力して Enter" style="width:100%;box-sizing:border-box;font-size:18px;padding:10px;margin:8px 0">' +
+      '<div class="row"><button class="primary" id="tySend">送信（Enter）</button><button id="blank">思い出せない（空欄）</button></div>';
+  } else if (gate){
     h += '<div class="hidden-opts">選択肢はまだ隠れています。頭の中で意味（答え）を思い浮かべてから押してください</div>' +
       '<div class="row"><button class="primary" id="reveal">思い浮かんだ → 選択肢を見る（R）</button><button id="blank">思い出せない（空欄）</button></div>';
   } else {
+    if (q.typed && a && typeof a.typed === "string" && a.typed) h += '<div class="hidden-opts">あなたの入力：<b>' + esc(a.typed) + '</b>（確定済み）。選択肢から意味を選んでください</div>';
     if (a && a.blankFirst && !answered) h += '<div class="hidden-opts">思い出せなかった語です。選択肢を見てわかるものがあれば選んでください（記録は空欄のまま。わかるかどうかだけ残します）</div>';
     h += '<div class="opts">';
     q.options.forEach(function(o, k){
@@ -263,14 +270,22 @@ function renderQ(){
   Array.prototype.forEach.call(document.querySelectorAll(".opt"), function(b){ b.onclick = function(){ choose(+b.getAttribute("data-k")); }; });
   bindGloss();
   if ($("reveal")) $("reveal").onclick = reveal;
+  if ($("ty")){ TY0 = Date.now(); $("tySend").onclick = submitTyped; try { $("ty").focus(); } catch(e){} }
   if ($("guess")) $("guess").onchange = function(e){ A(i).guess = e.target.checked; persist(); stats(); renderQ(); };
-  $("blank").onclick = function(){ if (gate){ var b = A(i); b.blankFirst = true; b.shown = true; persist(); renderQ(); } else choose(-1); };
+  $("blank").onclick = function(){ if (gate){ var b = A(i); if (q.typed){ b.typed = ""; b.typedMs = Date.now() - TY0; } b.blankFirst = true; b.shown = true; persist(); renderQ(); } else choose(-1); };
   $("prev").onclick = prev; $("next").onclick = next;
   $("cm").oninput = function(e){ A(i).comment = e.target.value; persist(); };
   if ($("slip")) $("slip").onchange = function(e){ A(i).slip = e.target.checked; persist(); stats(); renderQ(); };
   stats(); persist();
 }
-function reveal(){ var q = QUIZ.items[st.i]; if (q.type || !q.recall) return; var a = A(st.i); if (a.chosen !== null && a.chosen !== undefined) return; a.shown = true; persist(); renderQ(); }
+var TY0 = 0;
+function submitTyped(){
+  var q = QUIZ.items[st.i], a = A(st.i); if (!q.typed || a.shown) return;
+  var t = ($("ty").value || "").trim();
+  a.typed = t; a.typedMs = Date.now() - TY0; if (!t) a.blankFirst = true; a.shown = true;
+  persist(); renderQ();
+}
+function reveal(){ var q = QUIZ.items[st.i]; if (q.type || !q.recall || q.typed) return; var a = A(st.i); if (a.chosen !== null && a.chosen !== undefined) return; a.shown = true; persist(); renderQ(); }
 function choose(k){ if (QUIZ.items[st.i].type) return; var a = A(st.i); if (a.chosen !== null && a.chosen !== undefined) return; if (k >= 0 && QUIZ.items[st.i].recall && !a.shown) return; a.chosen = k; persist(); renderQ(); }
 function next(){ if (st.i < QUIZ.items.length - 1){ st.i++; renderQ(); scrollTo(0, 0); } else renderList(); }
 function prev(){ if (st.i > 0){ st.i--; renderQ(); scrollTo(0, 0); } }
@@ -284,6 +299,7 @@ function results(){
     var picked = a.blankFirst && c !== -1 && c !== null && c !== undefined;
     var it = {n:n, word:q.word, status:s, chosen:(c === -1 || c === null || c === undefined || picked) ? null : q.options[c], answer:q.options[q.answer], comment:a.comment || ""};
     if (a.blankFirst) it.pick = picked ? q.options[c] : null;
+    if (q.typed){ it.mode = "typed_v1"; it.typed = typeof a.typed === "string" ? a.typed : null; it.typed_ms = a.typedMs == null ? null : a.typedMs; }
     items.push(it);
   });
   return {quiz:QUIZ.id, saved_at:new Date().toISOString(), looked_up:Object.keys(st.look || {}), items:items};
@@ -383,6 +399,7 @@ function renderHelp(){
 /* ===== キー操作（PC） ===== */
 document.addEventListener("keydown", function(e){
   if (!QUIZ || st.view !== "q") return;
+  if (e.target.id === "ty"){ if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229){ e.preventDefault(); submitTyped(); } return; }
   if (e.target.tagName === "TEXTAREA"){ if (e.key === "Escape") e.target.blur(); else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); next(); } return; }
   var k = e.key.toLowerCase(), m = {"1":0, "2":1, "3":2, "4":3, "a":0, "b":1, "c":2, "d":3};
   if (k in m){ e.preventDefault(); var cur = QUIZ.items[st.i]; if (!cur.type && m[k] < cur.options.length) choose(m[k]); }
