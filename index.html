@@ -266,7 +266,7 @@ function renderQ(){
   }
   h += '<textarea id="cm" placeholder="コメント・質問（任意）">' + esc(A(i).comment) + '</textarea>' +
     '<div class="nav"><button id="prev"' + (i === 0 ? ' disabled' : '') + '>← 前へ</button><button class="primary" id="next">' + (i === QUIZ.items.length - 1 && !needsRetry(i) ? '一覧・結果へ' : '次へ →') + '</button></div>' +
-    '<div class="keys">R / スペース：選択肢を見る　G：勘で当たった　1〜4 / A〜D：選択　0 / X：空欄　Enter / →：次へ　←：前へ　M：押し間違い　コメント欄では Ctrl+Enter で次へ・Esc で抜ける</div></div>';
+    '<div class="keys">R / スペース：選択肢を見る　G：勘で当たった　1〜6 / A〜F：選択　0 / X：空欄　Enter / →：次へ　←：前へ　M：押し間違い　コメント欄では Ctrl+Enter で次へ・Esc で抜ける</div></div>';
   $("main").innerHTML = h;
   Array.prototype.forEach.call(document.querySelectorAll(".opt"), function(b){ b.onclick = function(){ choose(+b.getAttribute("data-k")); }; });
   bindGloss();
@@ -424,7 +424,7 @@ document.addEventListener("keydown", function(e){
   if (!QUIZ || st.view !== "q") return;
   if (e.target.id === "ty"){ if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229){ e.preventDefault(); submitTyped(); } return; }
   if (e.target.tagName === "TEXTAREA"){ if (e.key === "Escape") e.target.blur(); else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)){ e.preventDefault(); next(); } return; }
-  var k = e.key.toLowerCase(), m = {"1":0, "2":1, "3":2, "4":3, "a":0, "b":1, "c":2, "d":3};
+  var k = e.key.toLowerCase(), m = {"1":0, "2":1, "3":2, "4":3, "5":4, "6":5, "a":0, "b":1, "c":2, "d":3, "e":4, "f":5};
   if (k in m){ e.preventDefault(); var cur = QUIZ.items[st.i]; if (!cur.type && m[k] < cur.options.length) choose(m[k]); }
   else if (k === "0" || k === "x"){ e.preventDefault(); var bb = $("blank"); if (bb && !bb.disabled) bb.click(); }
   else if (k === "enter" || k === "arrowright"){ e.preventDefault(); next(); }
