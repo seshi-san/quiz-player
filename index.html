@@ -131,7 +131,7 @@ function normalize(raw){
       if (typeof ans !== "number" || ans % 1 || ans < 0 || ans >= opts.length) throw new Error("answer が範囲外");
       var q = {word:String(it.word || opts[ans]), sentence:it.sentence, options:opts, answer:ans, ja:it.ja || "", note:it.note || "",
         recall:(it.recall === undefined ? recallAll : it.recall === true), withPassage:it.passage === true,
-        typed:(it.typed === undefined ? raw.typed === true : it.typed === true)};
+        typed:(it.typed === undefined ? raw.typed === true : it.typed === true), drill_b:it.drill_b === true};
       if (q.typed) q.recall = true;
       if (shuffle){
         var r = rng(hash(id + "|" + q.word + "|" + q.sentence)), order = opts.map(function(_, i){ return i; });
@@ -141,7 +141,7 @@ function normalize(raw){
       ok.push(q);
     } catch(e){ bad.push(where + "：" + e.message); }
   });
-  return {id:id, title:raw.title ? String(raw.title) : id, items:ok, bad:bad, drill:raw.drill === true};
+  return {id:id, title:raw.title ? String(raw.title) : id, items:ok, bad:bad, drill:raw.drill === true, blankSkip:raw.blank_skip === true, banner:raw.banner ? String(raw.banner) : ""};
 }
 
 /* 同じ id がすでにあれば、まだ無い問題だけ後ろに足す */
@@ -238,7 +238,7 @@ function renderQ(){
   var i = st.i, q = QUIZ.items[i], a = st.a[i], answered = a && a.chosen !== null && a.chosen !== undefined;
   var sent = esc(q.sentence).replace(/_{2,}/, '<b style="letter-spacing:2px">_____</b>');
   var gate = q.recall && !answered && !(a && a.shown);
-  var h = progress() + '<div class="card"><div class="qno">' + (i + 1) + ' / ' + QUIZ.items.length + (q.recall ? '　まず思い出す' : '') + (q.attempt ? '　<b>やり直し ' + (q.attempt - 1) + ' 回目</b>' : '') + (QUIZ.drill && !q.type ? '　正解−不正解：' + net(q) : '') + '</div>' + (q.withPassage && lastPassage(i) ? '<div class="psg ref">' + passageHTML(lastPassage(i)) + '</div>' : '') + '<div class="sentence">' + sent + '</div>';
+  var h = progress() + '<div class="card"><div class="qno">' + (i + 1) + ' / ' + QUIZ.items.length + (q.recall ? '　まず思い出す' : '') + (q.attempt ? '　<b>やり直し ' + (q.attempt - 1) + ' 回目</b>' : '') + (QUIZ.drill && !q.type ? '　正解−不正解：' + net(q) : '') + '</div>' + (q.withPassage && lastPassage(i) ? '<div class="psg ref">' + passageHTML(lastPassage(i)) + '</div>' : '') + '<div class="sentence">' + sent + '</div>' + (QUIZ.banner && gate ? '<div class="hidden-opts">' + esc(QUIZ.banner) + '</div>' : '');
   if (gate && q.typed){
     h += '<div class="hidden-opts">意味を日本語で入力してください（ひらがな・略記でよい）。送信すると直せません。そのあと選択肢が出ます。何も打たずに送信すると「思い出せない」になります</div>' +
       '<input id="ty" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="意味を入力して Enter" style="width:100%;box-sizing:border-box;font-size:18px;padding:10px;margin:8px 0">' +
@@ -273,7 +273,7 @@ function renderQ(){
   if ($("reveal")) $("reveal").onclick = reveal;
   if ($("ty")){ TY0 = Date.now(); $("tySend").onclick = submitTyped; try { $("ty").focus(); } catch(e){} }
   if ($("guess")) $("guess").onchange = function(e){ A(i).guess = e.target.checked; persist(); stats(); renderQ(); };
-  $("blank").onclick = function(){ if (gate){ var b = A(i); if (q.typed){ b.typed = ""; b.typedMs = Date.now() - TY0; } b.blankFirst = true; b.shown = true; persist(); renderQ(); } else choose(-1); };
+  $("blank").onclick = function(){ if (gate){ var b = A(i); if (q.typed){ b.typed = ""; b.typedMs = Date.now() - TY0; } b.blankFirst = true; b.shown = true; if (QUIZ.blankSkip){ b.chosen = -1; persist(); next(); return; } persist(); renderQ(); } else choose(-1); };
   $("prev").onclick = prev; $("next").onclick = next;
   $("cm").oninput = function(e){ A(i).comment = e.target.value; persist(); };
   if ($("slip")) $("slip").onchange = function(e){ A(i).slip = e.target.checked; persist(); stats(); renderQ(); };
@@ -297,9 +297,33 @@ function net(q){
   });
   return n;
 }
+function okCount(q){
+  var n = 0;
+  QUIZ.items.forEach(function(x, j){ if (!x.type && x.word === q.word && x.sentence === q.sentence){ var s = status(j); if (s === "ok" || s === "slip") n++; } });
+  return n;
+}
+/* drill の規則（11/16、実データを渡して研究者役・コーチ役で3巡）：
+   A（既定）：その日1回正しく思い出したら終わり。1語3回まで。
+   B（問題に drill_b:true。比較のため半分の語）：その日2回正しく思い出したら終わり。1語4回まで。
+   どちらも再出題は今の位置から20問以上あとに置ける時だけ。置けなければ翌朝に回す */
 function needsRetry(i){
   var q = QUIZ.items[i], a = st.a[i];
-  return !!(QUIZ.drill && !q.type && a && !a.requeued && a.chosen !== null && a.chosen !== undefined && net(q) <= 0);
+  if (!(QUIZ.drill && !q.type && a && !a.requeued && a.chosen !== null && a.chosen !== undefined)) return false;
+  var need = q.drill_b ? 2 : 1, maxTry = q.drill_b ? 4 : 3;
+  return okCount(q) < need && (q.attempt || 1) < maxTry && (QUIZ.items.length - 1 - i) >= 20;
+}
+var GROUPS = ["con","com","acc","ass","per","pre","pro","dis","inf","ins","int"];
+function group(w){ w = String(w).toLowerCase(); for (var k = 0; k < GROUPS.length; k++) if (w.indexOf(GROUPS[k]) === 0) return GROUPS[k]; return ""; }
+/* 同じ群の語は最低5問空ける：最後尾から5つ前までの中で、前後5問に同じ群がない位置を探す（20問の間隔は守る）。なければ最後尾 */
+function placeAt(i, w){
+  var g = group(w), n = QUIZ.items.length;
+  if (!g) return n;
+  for (var pos = n; pos >= Math.max(i + 21, n - 5); pos--){
+    var bad = false;
+    for (var k = Math.max(0, pos - 5); k < Math.min(n, pos + 5); k++) if (!QUIZ.items[k].type && group(QUIZ.items[k].word) === g){ bad = true; break; }
+    if (!bad) return pos;
+  }
+  return n;
 }
 function requeue(i){
   if (!needsRetry(i)) return;
@@ -307,7 +331,7 @@ function requeue(i){
   var t = (q.attempt || 1) + 1, r = rng(hash(QUIZ.id + "|" + q.word + "|" + q.sentence + "|" + t)), order = q.options.map(function(_, k){ return k; });
   for (var k = order.length - 1; k > 0; k--){ var j = Math.floor(r() * (k + 1)); var x = order[k]; order[k] = order[j]; order[j] = x; }
   var c = JSON.parse(JSON.stringify(q)); c.options = order.map(function(k){ return q.options[k]; }); c.answer = order.indexOf(q.answer); c.attempt = t;
-  QUIZ.items.push(c); a.requeued = true; store("quiz:" + QUIZ.id, QUIZ); persist();
+  QUIZ.items.splice(placeAt(i, q.word), 0, c); a.requeued = true; store("quiz:" + QUIZ.id, QUIZ); persist();
 }
 function next(){ requeue(st.i); if (st.i < QUIZ.items.length - 1){ st.i++; renderQ(); scrollTo(0, 0); } else renderList(); }
 function prev(){ requeue(st.i); if (st.i > 0){ st.i--; renderQ(); scrollTo(0, 0); } }
