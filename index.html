@@ -238,7 +238,7 @@ function renderQ(){
   var i = st.i, q = QUIZ.items[i], a = st.a[i], answered = a && a.chosen !== null && a.chosen !== undefined;
   var sent = esc(q.sentence).replace(/_{2,}/, '<b style="letter-spacing:2px">_____</b>');
   var gate = q.recall && !answered && !(a && a.shown);
-  var h = progress() + '<div class="card"><div class="qno">' + (i + 1) + ' / ' + QUIZ.items.length + (q.recall ? '　まず思い出す' : '') + (q.attempt ? '　<b>やり直し ' + (q.attempt - 1) + ' 回目</b>' : '') + (QUIZ.drill && !q.type ? '　正解−不正解：' + net(q) : '') + '</div>' + (q.withPassage && lastPassage(i) ? '<div class="psg ref">' + passageHTML(lastPassage(i)) + '</div>' : '') + '<div class="sentence">' + sent + '</div>' + (QUIZ.banner && gate ? '<div class="hidden-opts">' + esc(QUIZ.banner) + '</div>' : '');
+  var h = progress() + '<div class="card"><div class="qno">' + (i + 1) + ' / ' + QUIZ.items.length + (q.recall ? '　まず思い出す' : '') + (q.attempt ? '　<b>やり直し ' + (q.attempt - 1) + ' 回目</b>' : '') + (QUIZ.drill && !q.type ? '　正しく思い出した回数：' + okCount(q) + '／' + needOk(q) : '') + '</div>' + (q.withPassage && lastPassage(i) ? '<div class="psg ref">' + passageHTML(lastPassage(i)) + '</div>' : '') + '<div class="sentence">' + sent + '</div>' + (QUIZ.banner && gate ? '<div class="hidden-opts">' + esc(QUIZ.banner) + '</div>' : '');
   if (gate && q.typed){
     h += '<div class="hidden-opts">意味を日本語で入力してください（ひらがな・略記でよい）。送信すると直せません。そのあと選択肢が出ます。何も打たずに送信すると「思い出せない」になります</div>' +
       '<input id="ty" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="意味を入力して Enter" style="width:100%;box-sizing:border-box;font-size:18px;padding:10px;margin:8px 0">' +
@@ -306,10 +306,16 @@ function okCount(q){
    A（既定）：その日1回正しく思い出したら終わり。1語3回まで。
    B（問題に drill_b:true。比較のため半分の語）：その日2回正しく思い出したら終わり。1語4回まで。
    どちらも再出題は今の位置から20問以上あとに置ける時だけ。置けなければ翌朝に回す */
+/* 11/19：B でも、その日の1回目に正しく思い出した語はそこで終わり。2回を求めるのは1回目に外した語だけ（E8 で効果を測ったのは外した語だけ。本人の指摘「正答の問題を何度も出される」） */
+function firstOk(q){
+  for (var j = 0; j < QUIZ.items.length; j++){ var x = QUIZ.items[j]; if (!x.type && x.word === q.word && x.sentence === q.sentence && !(x.attempt > 1)){ var s = status(j); return s === "ok" || s === "slip"; } }
+  return false;
+}
+function needOk(q){ return (q.drill_b && !firstOk(q)) ? 2 : 1; }
 function needsRetry(i){
   var q = QUIZ.items[i], a = st.a[i];
   if (!(QUIZ.drill && !q.type && a && !a.requeued && a.chosen !== null && a.chosen !== undefined)) return false;
-  var need = q.drill_b ? 2 : 1, maxTry = q.drill_b ? 4 : 3;
+  var need = needOk(q), maxTry = q.drill_b ? 4 : 3;
   return okCount(q) < need && (q.attempt || 1) < maxTry && (QUIZ.items.length - 1 - i) >= 20;
 }
 var GROUPS = ["con","com","acc","ass","per","pre","pro","dis","inf","ins","int"];
@@ -317,8 +323,10 @@ function group(w){ w = String(w).toLowerCase(); for (var k = 0; k < GROUPS.lengt
 /* 同じ群の語は最低5問空ける：最後尾から5つ前までの中で、前後5問に同じ群がない位置を探す（20問の間隔は守る）。なければ最後尾 */
 function placeAt(i, w){
   var g = group(w), n = QUIZ.items.length;
+  /* 答えの記録は問題の番号で持っているので、記録のある問題より前には差し込まない（← で戻って答え直したときに記録がずれないように） */
+  var last = -1; for (var k0 = 0; k0 < n; k0++) if (st.a[k0]) last = k0;
   if (!g) return n;
-  for (var pos = n; pos >= Math.max(i + 21, n - 5); pos--){
+  for (var pos = n; pos >= Math.max(i + 21, n - 5, last + 1); pos--){
     var bad = false;
     for (var k = Math.max(0, pos - 5); k < Math.min(n, pos + 5); k++) if (!QUIZ.items[k].type && group(QUIZ.items[k].word) === g){ bad = true; break; }
     if (!bad) return pos;
